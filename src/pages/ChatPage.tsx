@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import { useKeycloakAuth } from '../auth/KeycloakAuthProvider'
+import { clearDemoSession } from '../auth/demoSession'
 import '../styles/chat.css'
 
 type ChatUser = {
@@ -59,6 +61,9 @@ function timeNow() {
 }
 
 export function ChatPage() {
+  const navigate = useNavigate()
+  const { mode, authenticated, logoutKeycloak } = useKeycloakAuth()
+
   const [selectedId, setSelectedId] = useState(MOCK_USERS[0].id)
   const [threads, setThreads] = useState<Record<string, Message[]>>(() => ({
     ...INITIAL_THREADS,
@@ -93,12 +98,23 @@ export function ChatPage() {
     setDraft('')
   }
 
+  function handleLogout() {
+    if (mode === 'keycloak' && authenticated) {
+      logoutKeycloak()
+      return
+    }
+    clearDemoSession()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <div className="chat-layout">
       <aside className="chat-sidebar">
         <div className="chat-nav-top">
           <span className="chat-brand">Chats</span>
-          <Link to="/login">Log out</Link>
+          <button type="button" className="chat-logout-btn" onClick={handleLogout}>
+            Log out
+          </button>
         </div>
         <div className="chat-sidebar-header">
           <h2>People</h2>

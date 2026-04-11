@@ -1,10 +1,12 @@
 import gsap from 'gsap'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { useKeycloakAuth } from '../auth/KeycloakAuthProvider'
 import { AnimatedAuthLayout } from '../components/auth/AnimatedAuthLayout'
 import '../styles/auth-pages.css'
 
 export function ForgotPasswordPage() {
+  const { mode } = useKeycloakAuth()
   const [identifier, setIdentifier] = useState('')
   const [otp, setOtp] = useState('')
   const [error, setError] = useState('')
@@ -61,6 +63,12 @@ export function ForgotPasswordPage() {
       <p className="auth-form-sub" data-auth-form-reveal>
         Enter your username or email. We’ll send an OTP to your registered address.
       </p>
+
+      {mode === 'keycloak' ? (
+        <p className="auth-hint" data-auth-form-reveal>
+          If you use Keycloak, reset the password in the realm’s account console or ask your admin.
+        </p>
+      ) : null}
 
       {!done ? (
         <form onSubmit={sent ? handleVerify : handleRequestOtp} noValidate>

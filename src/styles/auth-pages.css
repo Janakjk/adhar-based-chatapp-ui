@@ -399,3 +399,114 @@
     transform: none;
   }
 }
+
+/* Boot / Keycloak */
+.auth-boot {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.auth-boot-inner {
+  text-align: center;
+}
+
+.auth-boot-inner p {
+  margin: 1rem 0 0;
+  font-size: 0.9rem;
+}
+
+.auth-boot-spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  border: 3px solid rgba(59, 158, 255, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: auth-boot-spin 0.75s linear infinite;
+}
+
+@keyframes auth-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.auth-keycloak-error {
+  font-size: 0.82rem;
+  color: var(--danger);
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.25);
+  line-height: 1.4;
+}
+
+.btn-keycloak {
+  width: 100%;
+  margin-top: 0.15rem;
+  padding: 0.85rem 1.25rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.5);
+  color: var(--text-heading);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.15s;
+}
+
+.btn-keycloak:hover {
+  border-color: rgba(94, 234, 212, 0.4);
+  background: rgba(15, 23, 42, 0.75);
+  transform: translateY(-1px);
+}
+
+.btn-retry {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn-retry:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.auth-hint {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}

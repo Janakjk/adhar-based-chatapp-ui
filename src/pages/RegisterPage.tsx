@@ -1,12 +1,15 @@
 import gsap from 'gsap'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useKeycloakAuth } from '../auth/KeycloakAuthProvider'
 import { AnimatedAuthLayout } from '../components/auth/AnimatedAuthLayout'
 import '../styles/auth-pages.css'
 import { isValidAadhaar, normalizeAadhaar } from '../utils/validation'
 
 export function RegisterPage() {
   const navigate = useNavigate()
+  const { mode, initError, registerWithKeycloak, retryKeycloakInit } = useKeycloakAuth()
+
   const [username, setUsername] = useState('')
   const [aadhaar, setAadhaar] = useState('')
   const [email, setEmail] = useState('')
@@ -52,6 +55,9 @@ export function RegisterPage() {
     navigate('/login', { state: { registered: true } })
   }
 
+  const showKeycloak = mode === 'keycloak'
+  const allowDemoForm = mode === 'mock' || (showKeycloak && Boolean(initError))
+
   return (
     <AnimatedAuthLayout
       eyebrow="Join the network"
@@ -63,83 +69,125 @@ export function RegisterPage() {
         Sign up
       </h1>
       <p className="auth-form-sub" data-auth-form-reveal>
-        A few details — we’ll keep your identity at the center of the experience.
+        {showKeycloak && !initError
+          ? 'Create an account in Keycloak (if self-registration is enabled for your realm).'
+          : showKeycloak && initError
+            ? 'Keycloak is unavailable. Retry below or use demo registration.'
+            : 'A few details — we’ll keep your identity at the center of the experience.'}
       </p>
 
-      <form onSubmit={handleSubmit} noValidate>
-        <div className="form-field" data-auth-form-reveal>
-          <label htmlFor="reg-username">Username</label>
-          <input
-            id="reg-username"
-            name="username"
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Choose a username"
-          />
+      {showKeycloak && initError ? (
+        <div className="auth-keycloak-error" data-auth-form-reveal>
+          <strong>Keycloak</strong> could not be reached: {initError}
+          <div>
+            <button type="button" className="btn-retry" onClick={retryKeycloakInit}>
+              Retry connection
+            </button>
+          </div>
         </div>
-        <div className="form-field" data-auth-form-reveal>
-          <label htmlFor="reg-aadhaar">Aadhaar number</label>
-          <input
-            id="reg-aadhaar"
-            name="aadhaar"
-            inputMode="numeric"
-            maxLength={14}
-            value={aadhaar}
-            onChange={(e) => {
-              const v = e.target.value.replace(/\D/g, '').slice(0, 12)
-              setAadhaar(v)
-            }}
-            placeholder="12-digit Aadhaar"
-          />
-        </div>
-        <div className="form-field" data-auth-form-reveal>
-          <label htmlFor="reg-email">Email</label>
-          <input
-            id="reg-email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-          />
-        </div>
-        <div className="form-field" data-auth-form-reveal>
-          <label htmlFor="reg-password">Password</label>
-          <input
-            id="reg-password"
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 8 characters"
-          />
-        </div>
-        <div className="form-field" data-auth-form-reveal>
-          <label htmlFor="reg-confirm">Confirm password</label>
-          <input
-            id="reg-confirm"
-            name="confirmPassword"
-            type="password"
-            autoComplete="new-password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Repeat password"
-          />
-        </div>
+      ) : null}
 
-        {error ? (
-          <p ref={errorRef} className="form-error">
-            {error}
+      {showKeycloak && !initError ? (
+        <>
+          <button
+            type="button"
+            className="btn-keycloak"
+            data-auth-form-reveal
+            onClick={registerWithKeycloak}
+          >
+            Register with Keycloak
+          </button>
+          <p className="auth-hint" data-auth-form-reveal style={{ marginTop: '1rem' }}>
+            Requires <em>User registration</em> on in the realm login settings. You’ll be sent back
+            to Chats after signup.
           </p>
-        ) : null}
+        </>
+      ) : null}
 
-        <button type="submit" className="btn-primary" data-auth-form-reveal>
-          Create account
-        </button>
-      </form>
+      {showKeycloak && !initError ? null : allowDemoForm ? (
+        <>
+          {showKeycloak && initError ? (
+            <div className="auth-divider" data-auth-form-reveal>
+              Demo registration
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSubmit} noValidate>
+            <div className="form-field" data-auth-form-reveal>
+              <label htmlFor="reg-username">Username</label>
+              <input
+                id="reg-username"
+                name="username"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Choose a username"
+              />
+            </div>
+            <div className="form-field" data-auth-form-reveal>
+              <label htmlFor="reg-aadhaar">Aadhaar number</label>
+              <input
+                id="reg-aadhaar"
+                name="aadhaar"
+                inputMode="numeric"
+                maxLength={14}
+                value={aadhaar}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, '').slice(0, 12)
+                  setAadhaar(v)
+                }}
+                placeholder="12-digit Aadhaar"
+              />
+            </div>
+            <div className="form-field" data-auth-form-reveal>
+              <label htmlFor="reg-email">Email</label>
+              <input
+                id="reg-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </div>
+            <div className="form-field" data-auth-form-reveal>
+              <label htmlFor="reg-password">Password</label>
+              <input
+                id="reg-password"
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+              />
+            </div>
+            <div className="form-field" data-auth-form-reveal>
+              <label htmlFor="reg-confirm">Confirm password</label>
+              <input
+                id="reg-confirm"
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="Repeat password"
+              />
+            </div>
+
+            {error ? (
+              <p ref={errorRef} className="form-error">
+                {error}
+              </p>
+            ) : null}
+
+            <button type="submit" className="btn-primary" data-auth-form-reveal>
+              {showKeycloak ? 'Save demo profile (local)' : 'Create account'}
+            </button>
+          </form>
+        </>
+      ) : null}
 
       <p className="auth-footer" data-auth-form-reveal>
         Already have an account?{' '}
