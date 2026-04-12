@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { apiUrl, authFetch } from '../api/authFetch'
 import { useKeycloakAuth } from '../auth/KeycloakAuthProvider'
 import { clearDemoSession } from '../auth/demoSession'
 import '../styles/chat.css'
@@ -91,6 +92,20 @@ export function ChatPage() {
       me: true,
       at: timeNow(),
     }
+    const threadId = selectedId
+
+    if (import.meta.env.VITE_API_BASE_URL?.trim()) {
+      void authFetch(apiUrl('/api/chat/messages'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threadId, text }),
+      })
+        .then((res) => {
+          if (!res.ok) console.warn('Chat API:', res.status, res.statusText)
+        })
+        .catch((err) => console.warn('Chat API:', err))
+    }
+
     setThreads((prev) => ({
       ...prev,
       [selectedId]: [...(prev[selectedId] ?? []), msg],
