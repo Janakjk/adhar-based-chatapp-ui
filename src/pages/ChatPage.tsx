@@ -89,6 +89,16 @@ function isMessageDTO(value: unknown): value is MessageDTO {
   )
 }
 
+async function logApiFailure(scope: string, res: Response) {
+  let bodyText = ''
+  try {
+    bodyText = await res.text()
+  } catch {
+    bodyText = ''
+  }
+  console.warn(`${scope} failed`, { status: res.status, statusText: res.statusText, body: bodyText })
+}
+
 export function ChatPage() {
   const navigate = useNavigate()
   const { mode, authenticated, keycloak, logoutKeycloak } = useKeycloakAuth()
@@ -121,7 +131,10 @@ export function ChatPage() {
     if (!apiConfigured || !currentUserId) return
     void authFetch(apiUrl(`/fetch/new/messages?userId=${encodeURIComponent(currentUserId)}`))
       .then(async (res) => {
-        if (!res.ok) return
+        if (!res.ok) {
+          await logApiFailure('New messages API', res)
+          return
+        }
         const payload = (await res.json()) as unknown
         if (!Array.isArray(payload)) return
         const dtos = payload.filter(isMessageDTO)
@@ -144,7 +157,10 @@ export function ChatPage() {
       `&userId2=${encodeURIComponent(selectedId)}`
     void authFetch(apiUrl(url))
       .then(async (res) => {
-        if (!res.ok) return
+        if (!res.ok) {
+          await logApiFailure('Conversation API', res)
+          return
+        }
         const payload = (await res.json()) as unknown
         if (!Array.isArray(payload)) return
         const dtos = payload.filter(isMessageDTO)
@@ -158,7 +174,15 @@ export function ChatPage() {
 
   function send() {
     const text = draft.trim()
-    if (!text || !currentUserId) return
+    if (!text) return
+    if (!currentUserId) {
+      console.warn('Cannot send message: userId missing from Keycloak token.')
+      return
+    }
+    if (!apiConfigured) {
+      console.warn('Cannot send message: VITE_API_BASE_URL is not configured.')
+      return
+    }
 
     const msg: Message = {
       id: `local-${Date.now()}`,
@@ -172,13 +196,17 @@ export function ChatPage() {
       message: text,
     }
 
-    if (apiConfigured) {
-      void authFetch(apiUrl('/send'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }).catch((err) => console.warn('Send API:', err))
-    }
+    void authFetch(apiUrl('/send'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          await logApiFailure('Send API', res)
+        }
+      })
+      .catch((err) => console.warn('Send API:', err))
 
     setThreads((prev) => ({
       ...prev,
