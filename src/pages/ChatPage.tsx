@@ -18,13 +18,12 @@ type Message = {
   at: string
 }
 
-type BackendMessageDTO = {
+type MessageDTO = {
   messageId?: string
   senderId: string
   receiverId: string
   message: string
   sentAt?: string
-  receivedAt?: string
 }
 
 const MOCK_USERS: ChatUser[] = [
@@ -44,9 +43,7 @@ const INITIAL_THREADS: Record<string, Message[]> = {
     { id: 'm4', text: 'The report is uploaded.', me: true, at: 'Yesterday' },
     { id: 'm5', text: 'Thanks for the update', me: false, at: 'Yesterday' },
   ],
-  '3': [
-    { id: 'm6', text: 'Did you get the doc?', me: false, at: 'Mon' },
-  ],
+  '3': [{ id: 'm6', text: 'Did you get the doc?', me: false, at: 'Mon' }],
   '4': [
     { id: 'm7', text: 'Let’s sync after lunch.', me: false, at: '9:41' },
     { id: 'm8', text: 'OK, sounds good', me: true, at: '9:43' },
@@ -70,23 +67,50 @@ function timeNow() {
   })
 }
 
+function mapMessage(dto: MessageDTO, currentUserId: string, index: number): Message {
+  const at = dto.sentAt
+    ? new Date(dto.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+    : timeNow()
+  return {
+    id: dto.messageId ?? `srv-${dto.senderId}-${dto.receiverId}-${index}-${Date.now()}`,
+    text: dto.message,
+    me: dto.senderId === currentUserId,
+    at,
+  }
+}
+
+function isMessageDTO(value: unknown): value is MessageDTO {
+  if (typeof value !== 'object' || value === null) return false
+  const item = value as Record<string, unknown>
+  return (
+    typeof item.senderId === 'string' &&
+    typeof item.receiverId === 'string' &&
+    typeof item.message === 'string'
+  )
+}
+
 export function ChatPage() {
   const navigate = useNavigate()
-  const { mode, authenticated, logoutKeycloak, keycloak } = useKeycloakAuth()
+  const { mode, authenticated, keycloak, logoutKeycloak } = useKeycloakAuth()
 
-  const currentUserId = String(keycloak?.tokenParsed?.sub ?? 'me')
   const [selectedId, setSelectedId] = useState(MOCK_USERS[0].id)
-  const [threads, setThreads] = useState<Record<string, Message[]>>(() => ({
-    ...INITIAL_THREADS,
-  }))
+  const [threads, setThreads] = useState<Record<string, Message[]>>(() => ({ ...INITIAL_THREADS }))
   const [draft, setDraft] = useState('')
   const listEndRef = useRef<HTMLDivElement>(null)
+  const apiConfigured = Boolean(import.meta.env.VITE_API_BASE_URL?.trim())
+
+  const currentUserId = useMemo(() => {
+    if (mode !== 'keycloak') return 'demo-user'
+    const parsed = keycloak?.tokenParsed as Record<string, unknown> | undefined
+    const candidates = [parsed?.preferred_username, parsed?.email, parsed?.sub]
+    const found = candidates.find((v) => typeof v === 'string' && v.trim().length > 0)
+    return typeof found === 'string' ? found : null
+  }, [keycloak, mode])
 
   const selected = useMemo(
     () => MOCK_USERS.find((u) => u.id === selectedId) ?? MOCK_USERS[0],
     [selectedId],
   )
-
   const messages = threads[selectedId] ?? []
 
   useEffect(() => {
@@ -94,45 +118,67 @@ export function ChatPage() {
   }, [messages, selectedId])
 
   useEffect(() => {
-    void authFetch(apiUrl(`/api/fetch/messages/1?userId=${encodeURIComponent(currentUserId)}&chatUserId=${encodeURIComponent(selectedId)}`))
+    if (!apiConfigured || !currentUserId) return
+    void authFetch(apiUrl(`/fetch/new/messages?userId=${encodeURIComponent(currentUserId)}`))
       .then(async (res) => {
         if (!res.ok) return
-        const data = (await res.json()) as BackendMessageDTO[]
-        const normalized: Message[] = data.map((m, index) => ({
-          id: m.messageId ?? `remote-${selectedId}-${index}`,
-          text: m.message,
-          me: m.senderId === currentUserId,
-          at: m.sentAt ? new Date(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--',
-        }))
-        setThreads((prev) => ({ ...prev, [selectedId]: normalized }))
+        const payload = (await res.json()) as unknown
+        if (!Array.isArray(payload)) return
+        const dtos = payload.filter(isMessageDTO)
+        setThreads((prev) => {
+          const next = { ...prev }
+          dtos.forEach((dto, idx) => {
+            const otherUserId = dto.senderId === currentUserId ? dto.receiverId : dto.senderId
+            next[otherUserId] = [...(next[otherUserId] ?? []), mapMessage(dto, currentUserId, idx)]
+          })
+          return next
+        })
       })
-      .catch((err) => console.warn('Chat API:', err))
-  }, [currentUserId, selectedId])
+      .catch((err) => console.warn('New messages API:', err))
+  }, [apiConfigured, currentUserId])
+
+  useEffect(() => {
+    if (!apiConfigured || !currentUserId || !selectedId) return
+    const url =
+      `/fetch/messages?userId1=${encodeURIComponent(currentUserId)}` +
+      `&userId2=${encodeURIComponent(selectedId)}`
+    void authFetch(apiUrl(url))
+      .then(async (res) => {
+        if (!res.ok) return
+        const payload = (await res.json()) as unknown
+        if (!Array.isArray(payload)) return
+        const dtos = payload.filter(isMessageDTO)
+        setThreads((prev) => ({
+          ...prev,
+          [selectedId]: dtos.map((dto, idx) => mapMessage(dto, currentUserId, idx)),
+        }))
+      })
+      .catch((err) => console.warn('Conversation API:', err))
+  }, [apiConfigured, currentUserId, selectedId])
 
   function send() {
     const text = draft.trim()
-    if (!text) return
+    if (!text || !currentUserId) return
+
     const msg: Message = {
       id: `local-${Date.now()}`,
       text,
       me: true,
       at: timeNow(),
     }
-    const payload: BackendMessageDTO = {
+    const body: MessageDTO = {
       senderId: currentUserId,
       receiverId: selectedId,
       message: text,
     }
 
-    void authFetch(apiUrl('/api/send'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-      .then((res) => {
-        if (!res.ok) console.warn('Chat API:', res.status, res.statusText)
-      })
-      .catch((err) => console.warn('Chat API:', err))
+    if (apiConfigured) {
+      void authFetch(apiUrl('/send'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).catch((err) => console.warn('Send API:', err))
+    }
 
     setThreads((prev) => ({
       ...prev,
