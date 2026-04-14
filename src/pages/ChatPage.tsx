@@ -18,6 +18,15 @@ type Message = {
   at: string
 }
 
+type BackendMessageDTO = {
+  messageId?: string
+  senderId: string
+  receiverId: string
+  message: string
+  sentAt?: string
+  receivedAt?: string
+}
+
 const MOCK_USERS: ChatUser[] = [
   { id: '1', name: 'Priya Sharma', preview: 'See you tomorrow at 10' },
   { id: '2', name: 'Rahul Verma', preview: 'Thanks for the update' },
@@ -63,8 +72,9 @@ function timeNow() {
 
 export function ChatPage() {
   const navigate = useNavigate()
-  const { mode, authenticated, logoutKeycloak } = useKeycloakAuth()
+  const { mode, authenticated, logoutKeycloak, keycloak } = useKeycloakAuth()
 
+  const currentUserId = String(keycloak?.tokenParsed?.sub ?? 'me')
   const [selectedId, setSelectedId] = useState(MOCK_USERS[0].id)
   const [threads, setThreads] = useState<Record<string, Message[]>>(() => ({
     ...INITIAL_THREADS,
@@ -83,6 +93,22 @@ export function ChatPage() {
     listEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, selectedId])
 
+  useEffect(() => {
+    void authFetch(apiUrl(`/api/fetch/messages/1?userId=${encodeURIComponent(currentUserId)}&chatUserId=${encodeURIComponent(selectedId)}`))
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = (await res.json()) as BackendMessageDTO[]
+        const normalized: Message[] = data.map((m, index) => ({
+          id: m.messageId ?? `remote-${selectedId}-${index}`,
+          text: m.message,
+          me: m.senderId === currentUserId,
+          at: m.sentAt ? new Date(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--',
+        }))
+        setThreads((prev) => ({ ...prev, [selectedId]: normalized }))
+      })
+      .catch((err) => console.warn('Chat API:', err))
+  }, [currentUserId, selectedId])
+
   function send() {
     const text = draft.trim()
     if (!text) return
@@ -92,19 +118,21 @@ export function ChatPage() {
       me: true,
       at: timeNow(),
     }
-    const threadId = selectedId
-
-    if (import.meta.env.VITE_API_BASE_URL?.trim()) {
-      void authFetch(apiUrl('/api/chat/messages'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ threadId, text }),
-      })
-        .then((res) => {
-          if (!res.ok) console.warn('Chat API:', res.status, res.statusText)
-        })
-        .catch((err) => console.warn('Chat API:', err))
+    const payload: BackendMessageDTO = {
+      senderId: currentUserId,
+      receiverId: selectedId,
+      message: text,
     }
+
+    void authFetch(apiUrl('/api/send'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => {
+        if (!res.ok) console.warn('Chat API:', res.status, res.statusText)
+      })
+      .catch((err) => console.warn('Chat API:', err))
 
     setThreads((prev) => ({
       ...prev,
